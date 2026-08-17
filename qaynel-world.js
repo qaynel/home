@@ -59,20 +59,37 @@
     ['remote host', 'hosts'], ['test suite', 'execution'], ['result', 'observability']
   ];
 
-  // ink silhouette of the Qaynel mark, as rectilinear masses (x, y, w, h, rot)
-  const SIGIL = [
-    [0, 3.18, 3.40, 0.24], [0, -3.18, 3.40, 0.24], [-1.58, 0, 0.24, 6.60], [1.58, 0, 0.24, 6.60],
-    [0, 2.78, 2.56, 0.22], [0, -2.86, 2.56, 0.22], [-1.17, -0.04, 0.22, 5.64], [1.17, -0.04, 0.22, 5.64],
-    [0, 2.44, 2.12, 0.34], [-0.83, 1.98, 0.46, 0.58], [0.83, 1.98, 0.46, 0.58], [0, 1.98, 0.30, 0.58],
-    [0, 1.60, 2.12, 0.28],
-    [0, 1.32, 0.26, 0.26, 0.785],
-    [0, 0.92, 0.24, 0.80],
-    [-0.72, 1.02, 0.62, 0.24], [0.72, 1.02, 0.62, 0.24],
-    [-0.60, 0.55, 1.00, 0.42, -0.50], [0.60, 0.55, 1.00, 0.42, 0.50],
-    [-0.74, -1.30, 0.46, 2.20], [0.74, -1.30, 0.46, 2.20],
-    [-0.98, -2.20, 0.44, 1.30], [0.98, -2.20, 0.44, 1.30],
-    [0, -2.62, 1.30, 0.22]
+  // ink silhouette of the Qaynel mark, traced from the brand sigil (assets/qaynel-sigil.png).
+  // Rectilinear masses as (x, y, w, h, rot) for the frame/base, plus polygon masses
+  // (with holes for the windows and the body cut-out) for the rest.
+  const SIGIL_BOXES = [
+    [0, 3.115, 3.40, 0.37],          // frame: top bar
+    [-1.5275, -0.185, 0.345, 6.23],  // frame: left leg
+    [1.5275, -0.185, 0.345, 6.23],   // frame: right leg
+    [0, -3.135, 2.22, 0.33]          // base bar
   ];
+  const SIGIL_SHAPES = [
+    { // window plate: two windows + the downward tick between them
+      outer: [[-1.11, 1.29], [1.11, 1.29], [1.11, 2.67], [-1.11, 2.67]],
+      holes: [
+        [[-0.727, 1.736], [-0.239, 1.736], [-0.239, 2.324], [-0.727, 2.324]],
+        [[0.239, 1.736], [0.727, 1.736], [0.727, 2.324], [0.239, 2.324]],
+        [[-0.125, 1.606], [0.125, 1.606], [0, 1.31]]
+      ]
+    },
+    { outer: [[1.121, 0.909], [1.101, 0.924], [0.757, 0.919], [0.742, 0.894], [0.747, 0.824], [0.727, 0.760], [0.364, 0.416], [1.121, 0.416]] }, // right arm
+    { outer: [[-1.121, 0.909], [-1.101, 0.924], [-0.757, 0.919], [-0.742, 0.894], [-0.747, 0.824], [-0.727, 0.760], [-0.364, 0.416], [-1.121, 0.416]] }, // left arm
+    { outer: [[-1.11, 1.28], [-1.09, 1.18], [-0.26, 1.18], [-0.235, 0.416], [0.235, 0.416], [0.26, 1.18], [1.09, 1.18], [1.11, 1.28]] }, // center stem
+    { // body: the hourglass silhouette cut from a solid mass
+      outer: [[-1.115, -2.97], [1.115, -2.97], [1.115, 0.41], [-1.115, 0.41]],
+      holes: [[
+        [-0.082, 0.377], [0.082, 0.377], [0.204, 0.067], [0.184, -0.047], [0.648, -0.496], [0.792, -0.570],
+        [0.503, -1.233], [0.742, -2.224], [0.747, -2.892], [0.722, -2.921], [-0.722, -2.921], [-0.747, -2.892],
+        [-0.742, -2.224], [-0.503, -1.233], [-0.792, -0.570], [-0.648, -0.496], [-0.184, -0.047], [-0.204, 0.067]
+      ]]
+    }
+  ];
+  const SIGIL_RING = { x: 0, y: 4.45, r: 0.248, tube: 0.132 };
 
   const TOOLS = ['GitHub', 'Terminal', 'Cloud host', 'Model', 'MCP server', 'Database', 'Browser', 'Internal tool'];
 
@@ -156,24 +173,45 @@
       const g = this.sigil = new T.Group();
       this.sigilParts = [];
       const rnd = rng(7);
-      SIGIL.forEach((p, i) => {
-        const [x, y, w, h, rot] = p;
-        const m = new T.Mesh(new T.BoxGeometry(w, h, 0.22), this.mats.ink);
-        m.position.set(x, y, 0);
-        if (rot) m.rotation.z = rot;
-        const a = Math.atan2(y + 0.001, x + 0.001);
+
+      const addPart = (m, cx, cy, baseRot) => {
+        const a = Math.atan2(cy + 0.001, cx + 0.001);
         m.userData.home = m.position.clone();
         m.userData.out = new T.Vector3(Math.cos(a) * (2.2 + rnd() * 5.5), Math.sin(a) * (2.0 + rnd() * 4.5), (rnd() - 0.5) * 7);
         m.userData.spin = (rnd() - 0.5) * 1.6;
+        m.userData.baseRot = baseRot || 0;
         g.add(m); this.sigilParts.push(m);
+      };
+
+      SIGIL_BOXES.forEach(([x, y, w, h, rot]) => {
+        const m = new T.Mesh(new T.BoxGeometry(w, h, 0.22), this.mats.ink);
+        m.position.set(x, y, 0);
+        if (rot) m.rotation.z = rot;
+        addPart(m, x, y, rot);
       });
+
+      const shapeFromPts = (pts) => {
+        const sh = new T.Shape();
+        pts.forEach(([x, y], i) => i ? sh.lineTo(x, y) : sh.moveTo(x, y));
+        return sh;
+      };
+      SIGIL_SHAPES.forEach(({ outer, holes }) => {
+        const shape = shapeFromPts(outer);
+        (holes || []).forEach(h => shape.holes.push(shapeFromPts(h)));
+        const geo = new T.ExtrudeGeometry(shape, { depth: 0.22, bevelEnabled: false });
+        geo.translate(0, 0, -0.11);
+        const m = new T.Mesh(geo, this.mats.ink);
+        let cx = 0, cy = 0;
+        outer.forEach(([x, y]) => { cx += x; cy += y; });
+        addPart(m, cx / outer.length, cy / outer.length, 0);
+      });
+
       g.position.y = 1.35;
-      const ring = new T.Mesh(new T.TorusGeometry(0.30, 0.105, 10, 40), this.mats.ink);
-      ring.position.set(0, 4.05, 0);
-      ring.userData.home = ring.position.clone();
-      ring.userData.out = new T.Vector3(0, 6.5, -2);
+      const ring = new T.Mesh(new T.TorusGeometry(SIGIL_RING.r, SIGIL_RING.tube, 12, 48), this.mats.ink);
+      ring.position.set(SIGIL_RING.x, SIGIL_RING.y, 0);
+      addPart(ring, SIGIL_RING.x, SIGIL_RING.y, 0);
+      ring.userData.out.set(0, 6.5, -2);
       ring.userData.spin = 0.6;
-      g.add(ring); this.sigilParts.push(ring);
       // construction lines around the mark
       const pts = [];
       const circ = (R, y0) => { for (let i = 0; i <= 96; i++) { const a = i / 96 * Math.PI * 2; pts.push(Math.cos(a) * R, y0 + Math.sin(a) * R, -0.4); if (i && i < 96) pts.push(Math.cos(a) * R, y0 + Math.sin(a) * R, -0.4); } };
@@ -569,7 +607,7 @@
           tmp.y += this.ptr.y * hoverSep * (1 + i % 3) * .5;
           tmp.z += Math.sin(time * .5 + i) * .015 + this.ptr.x * hoverSep * (i % 5) * .3;
           m.position.lerp(tmp, .12);
-          m.rotation.z = lerp(m.rotation.z, (SIGIL[i] && SIGIL[i][4] || 0) + ud.spin * amt, .1);
+          m.rotation.z = lerp(m.rotation.z, ud.baseRot + ud.spin * amt, .1);
           const op = clamp(1 - open * 1.25 + back * 1.4, 0, 1);
           if (m.material.transparent !== true) { m.material = m.material.clone(); m.material.transparent = true; }
           m.material.opacity = op;
